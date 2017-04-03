@@ -2,16 +2,39 @@
 ### CONFIGURATION
 ### PLEASE CHANGE THE FFMPEG VARIABLE TO POINT TO YOUR FFMPEG PROGRAM
 
+# Samplerate for all processed audio including final mix
 SAMPLERATE = 48000
+
+# Path to the directory containing your FFmpeg and FFprobe executables
 FFMPEG = r"c:/Program Files/ffmpeg/bin/"
-PROCORIG = "aformat=channel_layouts=mono,highpass=f=200,silenceremove=1:0:-50dB:-1:0:-50dB,aresample=%d,dynaudnorm" 
-PROCPITCH = "silenceremove=1:0:-50dB:-1:0:-50dB,asetrate=%d,aresample=%d"
-MONOCODEC = "-vn -acodec libopus"
-STEREOCODEC = "-vn -acodec libopus -ac 2"
+
+# How many audio channels will the final mix contain?
 CHANNELS = 2
-METADATA = "-metadata comment=\"via samplerate %d\""
-EXTS = [".m4a", ".mp4", ".wav", ".aiff", ".aif", ".mp3", ".mp2", ".webm", ".ogg", ".vorbis", ".opus", ".flac"]
+
+# How long is the fade between volume levels (including mute)?
 FADE = 0.5
+
+# Which file extensions (case-insentitive) do we consider to be audio files?
+EXTS = [".m4a", ".mp4", ".wav", ".aiff", ".aif", ".mp3", ".mp2", ".webm", ".ogg", ".vorbis", ".opus", ".flac"]
+
+# How will the slow-down/speed-up sample rate be described in metadata?
+METADATA = "-metadata comment=\"via samplerate %d\""
+
+# How should FFmpeg process each incoming file to get it to a standard format?
+PROCORIG = "aformat=channel_layouts=mono,highpass=f=200,silenceremove=1:0:-50dB:-1:0:-50dB,aresample=%d,dynaudnorm"
+
+# How should FFmpeg process each standardized file for pitch?
+PROCPITCH = "silenceremove=1:0:-50dB:-1:0:-50dB,asetrate=%d,aresample=%d"
+
+# Which codec is to be used for standardized files?
+MONOCODEC = "-vn -acodec libopus"
+
+# Which codec is to be used for panned and mixed files including the final output?
+STEREOCODEC = "-vn -acodec libopus -ac 2"
+
+# End of user-definable variables
+#################################
+
 
 import logging, random, math, argparse, subprocess, json, os, concurrent.futures, itertools
 
