@@ -212,6 +212,7 @@ def makeFFmpegVolumeCommand(fileDict):
     # one string per channel, at the corresponding time.
     volumeCommandList = list()
     for volumeList, time in itertools.izip(fileDict['Volumes'], fileDict['Times']):
+        # Because the lists have been prepared by makeVolumeAndTimeNodeList()
             
 
 
