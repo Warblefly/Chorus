@@ -58,7 +58,7 @@ os.makedirs(TEMPLOCATION, exist_ok=True)
 tempfile.tempdir=TEMPLOCATION
 
 def ffmpegEscape(input):
-    return(input.replace("\\", "\\\\").replace(":", "\\:"))
+    return(input.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'"))
 
 def makeDurList(time, shortest=1, longest=10):
     # logging.debug("Durations totalling %s to be calculated" % time)
@@ -86,7 +86,7 @@ def makeVolumeList(count, quietest=-24, loudest=0):
         for c in range(CHANNELS):
             volumeList[i][c] = random.uniform(quietest, loudest)
             # Some of the volumes need to be set to zero
-        if random.random() > 0.75:
+        if random.random() > 0.5:
             for c in range(CHANNELS):
                 volumeList[i][c] = 0 - math.inf
     # logging.debug("List of volumes: %s" % volumeList)
@@ -134,6 +134,10 @@ def standardiseDirectory(pathname, destination="%s/PROCESSED"):
     # Using parallel processing...
     # Go through a directory of audio files, and convert each to a file
     # in standardized format. All are in mono at SAMPLERATE samples/sec.
+    # Also (sadly, for reasons associated with the practicality of processing long
+    # files requiring many volume variations) we truncate each file
+    # to nine minutes.
+    
     os.makedirs(destination, exist_ok=True)
     
     fileList = filterAudioFiles(os.listdir(pathname))
@@ -144,7 +148,7 @@ def standardiseDirectory(pathname, destination="%s/PROCESSED"):
         
         # First, original pitch
         commands.append("\"" + FFMPEG + "ffmpeg\" -y -i \"%s\" " % fullFileName + " -af " + PROCORIG % SAMPLERATE + " " + MONOCODEC \
-                  + " " + METADATA % SAMPLERATE + " \"" + destination + "/" + fileName + ".wav\"")
+                  + " " + METADATA % SAMPLERATE + "  \"" + destination + "/" + fileName + ".wav\"")
         
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         for command in commands:
@@ -168,7 +172,7 @@ def pitchShiftDirectory(pathname, variants=8):
             #commands.append("echo HELLO > output")
             commands.append("\"" + FFMPEG + "ffmpeg\" -y -i \"%s\" " % fullFileName \
                             + " -af " + PROCPITCH % (pitch, SAMPLERATE) + " " + MONOCODEC \
-                            + " " + METADATA % pitch + " \"" + pathname + "/" + os.path.splitext(fileName)[0] + "-%d" % pitch + ".wav\"")
+                            + " -t 07:00 " + METADATA % pitch + " \"" + pathname + "/" + os.path.splitext(fileName)[0] + "-%d" % pitch + ".wav\"")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         for command in commands:
@@ -438,7 +442,7 @@ def mixDirectoryFiles(directory, count=999999, renderDuration=3600):
     # The end of the command resets the timestamps because we are looping over
     # incoming audio and, therefore, losing the original timestamps which
     # harms FFmpeg's ability to time its own output.
-    script += "amix=inputs=" + str(i+1) + ",asetpts=N/SR/TB[out0]"
+    script += "amix=inputs=" + str(i+1) + ",asetpts=N/SR/TB,dynaudnorm,bs2b[out0]"
 
     # Now write the script to a temporary file
     tempHandle = tempfile.NamedTemporaryFile(delete=False)
@@ -458,21 +462,10 @@ def mixDirectoryFiles(directory, count=999999, renderDuration=3600):
     
 
 # TESTING OR YOUR MAIN COMMANDS BEGIN HERE
-           
-#testfile = Birdsong("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/Hirundo rustica-04.mp3")
-
-#print("File duration is: %s" % testfile.duration)
-#print("File duration_list is: %s" % testfile.durList)
-#print("File volume list is: %s" % testfile.volumeList)
-# print("File pitch list is: %s" % testfile.pitchList)
-
-#print(deltaVolFormula(v1=6, v2=1, t1=3, t2=5))
-
+   
 standardiseDirectory("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/")
 pitchShiftDirectory("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED")
 renderList = makeVolumeAndTimeNodeList("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED")
-#print("Renderlist is %s" % renderList)
-#print("Something else")
 
 result = repitchRenderList(renderList)
 
