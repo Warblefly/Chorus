@@ -36,15 +36,15 @@ STEREOCODEC = "-vn -acodec libopus -ac 2"
 #################################
 
 
-import logging, random, math, argparse, subprocess, json, os, concurrent.futures, itertools
+import logging, random, math, argparse, subprocess, json, os, concurrent.futures, itertools, pprint, copy
 
-logging.basicConfig(level=logging.ERROR, format='%(funcName)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(funcName)s - %(levelname)s - %(message)s')
 
 def ffmpegEscape(input):
     return(input.replate("\\", "\\\\").replace(":", ":\\:"))
 
 def makeDurList(time, shortest=1, longest=20):
-    logging.debug("Durations totalling %s to be calculated" % time)
+    # logging.debug("Durations totalling %s to be calculated" % time)
 
     durList = list()
     totalDur = 0
@@ -52,13 +52,13 @@ def makeDurList(time, shortest=1, longest=20):
         duration = random.uniform(shortest, longest)
         durList.append(duration)
         totalDur += duration
-        logging.debug("Appending %s seconds" % duration)
+        # logging.debug("Appending %s seconds" % duration)
 
     overTime = totalDur - time
     durList[-1] -= overTime
 
-    logging.debug("List of durations:" % durList)
-    logging.debug("Check: total durations in list is %s" % sum(durList))
+    #logging.debug("List of durations:" % durList)
+    #logging.debug("Check: total durations in list is %s" % sum(durList))
     return(durList) 
 
 def makeVolumeList(count, quietest=-24, loudest=0):
@@ -72,29 +72,37 @@ def makeVolumeList(count, quietest=-24, loudest=0):
         if random.random() > 0.75:
             for c in range(CHANNELS):
                 volumeList[i][c] = 0 - math.inf
-    logging.debug("List of volumes: %s" % volumeList)
+    # logging.debug("List of volumes: %s" % volumeList)
     return(volumeList)
 
 def makePitchList(count, lowest=1/20, highest=1/2):
     pitchList = [None] * count
     for i in range(count):
         pitchList[i] = random.uniform(lowest, highest) * SAMPLERATE
-    logging.debug("List of pitches: %s" % pitchList)
+    #logging.debug("List of pitches: %s" % pitchList)
     return(pitchList)
 
 def clipLength(filename):
     dos_command=[FFMPEG+"ffprobe.exe", "-v", "quiet", "-hide_banner", "-print_format", "json", "-show_streams", "-select_streams", "a:0", filename]
     jReturn = json.loads(subprocess.run(dos_command, check=True, stdout=subprocess.PIPE).stdout)
     duration = jReturn['streams'][0]['duration']
-    logging.debug("Found an audio track of duration %s" % duration)
+    #logging.debug("Found an audio track of duration %s" % duration)
     return(int(float(duration)))
 
 def deltaVolFormula(v1, v2, t1, t2):
+    if math.isinf(v1):
+        v1 = -999
+    if math.isinf(v2):
+        v2 = -999
+        v1 = round(v1)
+        v2 = round(v2)
+        t1 = round(t1, 1)
+        t2 = round(t2, 1)
     # Calculates the FFmpeg formula string for creating a smooth
     # slope between one volume and another, given the volumes
     # required at either end of the slope (v1 and v2), and the time in seconds
     # at each end of the slope (t1 and t2)
-    formula = "if(between(t,%f,%f),%f-((%f-%f)/(%f-%f))*(%f-t),1):eval=frame" % (t1, t2, v1, v2, v1, t2, t1, t1)
+    formula = "if(between(t,%.1f,%.1f),%.0fdB-((%.0fdB-%.0fdB)/(%.1f-%.1f))*(%.1f-t),1):eval=frame" % (t1, t2, v1, v2, v1, t2, t1, t1)
     return(formula)
 
 def standardiseDirectory(pathname, destination="%s/PROCESSED"):
@@ -114,13 +122,15 @@ def standardiseDirectory(pathname, destination="%s/PROCESSED"):
         commands.append("\"" + FFMPEG + "ffmpeg\" -y -i \"%s\" " % fullFileName + " -af " + PROCORIG % SAMPLERATE + " " + MONOCODEC \
                   + " " + METADATA % SAMPLERATE + " \"" + destination + "/" + fileName + ".opus\"")
         
-    with concurrent.futures.ProcessPoolExecutor() as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         for command in commands:
-            logging.debug(command)
+            # logging.debug(command)
             try:
                 future = executor.submit(subprocess.call, command)
             except Exception:
-                logging.debug("This should never be reached")
+                # logging.debug("This should never be reached")
+                pass
+    return()
 
 def pitchShiftDirectory(pathname, variants=8):
     # Now let's make the files at lower pitches
@@ -131,17 +141,21 @@ def pitchShiftDirectory(pathname, variants=8):
         fullFileName = pathname + '/' + fileName
         pitchList = makePitchList(variants)
         for pitch in pitchList:
+            #commands.append("echo HELLO > output")
             commands.append("\"" + FFMPEG + "ffmpeg\" -y -i \"%s\" " % fullFileName \
                             + " -af " + PROCPITCH % (pitch, SAMPLERATE) + " " + MONOCODEC \
                             + " " + METADATA % pitch + " \"" + pathname + "/" + os.path.splitext(fileName)[0] + "-%d" % pitch + ".opus\"")
 
-    with concurrent.futures.ProcessPoolExecutor() as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         for command in commands:
-            logging.debug(command)
+            # (command)
+            #subprocess.run(command)
             try:
-                future = executor.submit(subprocess.call, command)
+                future = executor.submit(subprocess.run, command)
             except Exception:
-                logging.debug("This should never be reached")
+                # logging.debug("This should never be reached")
+                pass
+    return()
 
 def filterAudioFiles(fileList):
     outputList = list()
@@ -151,11 +165,11 @@ def filterAudioFiles(fileList):
     return(outputList)
 
 def makeVolumeAndTimeNodeList(pathname, destination="%s/VOLUMEPROCESSED"):
-# Now create a list containing:
-# [0] Filename
-# [1] Duration
-# [2] durationList
-# [3] volumeList
+# Now create a dictionary containing:
+# Filename
+# Duration
+# durationList
+# volumeList
 
 # At each position in the durationList, process the volume according to the figure in the parallel volumeList item
 # at each node generate two subnodes
@@ -199,6 +213,7 @@ def makeVolumeAndTimeNodeList(pathname, destination="%s/VOLUMEPROCESSED"):
         # again, because this is the closing volume
         processedVolumeList.append(valueList)
         fileDict['Volumes'] = processedVolumeList
+        # logging.debug("Volumes: %s" % fileDict['Volumes'])
 
         timesList = list()
         # Now, using those volumes in processedVolumeList,
@@ -221,41 +236,90 @@ def makeVolumeAndTimeNodeList(pathname, destination="%s/VOLUMEPROCESSED"):
         fileDict['Times'] = timesList
 
         # Append the command dictionary for this file to the overall list of nodes
-        nodeList.append(fileDict)
-        logging.debug("Appending %s" % fileDict)
-        logging.debug("Length of volumes is %s" % len(fileDict['Volumes']))
-        logging.debug("Length of times is %s" % len(fileDict['Times']))
+        # nodeList.append(fileDict)
+        # logging.debug("Appending %s" % fileDict)
+        # logging.debug("Length of volumes is %s" % len(fileDict['Volumes']))
+        # logging.debug("Length of times is %s" % len(fileDict['Times']))
         nodeList.append(fileDict)
     return(nodeList)
 
-def makeFFmpegVolumeCommand(fileDict):
+def makeFFmpegVolumeCommands(fileDict):
     # Returns a list of lists, containing the strings required to pass to FFmpeg,
     # one string per channel, to adjust the volume levels as required
     # Each returned list item corresponds to the set of volume commands required,
     # one string per channel, at the corresponding time.
-    volumeCommandList = list()
-    for volumeList, time in itertools.izip(fileDict['Volumes'], fileDict['Times']):
+    FFmpegVolumeCommands = list()
+    # Create per-channel lists of volumes
+    timesList = fileDict["Times"]
+    channel = 0
+    while channel < CHANNELS:
+        channelVolumesList = list()
+        
+        for volumeItem in fileDict["Volumes"]:
+            channelVolumesList.append(volumeItem[channel])
+
+        volumeCommandList = list()
+        # logging.debug("Channel % d" % channel)
+        # logging.debug("Volumes: %s" % channelVolumesList)
+        
         # Because the lists have been prepared by makeVolumeAndTimeNodeList()
-            
+        # and therefore contain duplicate entries in the expected places,
+        # we now create for each pair of values an appropriate FFmpeg volume
+        # command. This is slightly inefficient, because two identical volumes will
+        # still be the subjects of mathematics to calculate the slope (exactly 0)
+        # between the two values. But, for today, it saves my programming time.
 
+        nodeList = list(zip(channelVolumesList, timesList))
+        # pprint.pprint(nodeList)
+        for i, node in enumerate(nodeList):
+            # pprint.pprint(node)
+            v1 = nodeList[i][0]
+            try:
+                v2 = nodeList[i+1][0]
+            except Exception:
+                v2 = v1
+            t1 = nodeList[i][1]
+            try:
+                t2 = nodeList[i+1][1]
+            except Exception:
+                t2 = t1
+            volumeCommand = deltaVolFormula(v1, v2, t1, t2)
+          # logging.debug("Command is: %s" % volumeCommand)
+            volumeCommandList.append(volumeCommand)
+            # At this point, one whole channel's volume commands have been calculated.
+        FFmpegVolumeCommands.append(volumeCommandList)
+        channel += 1
+        
+    return(FFmpegVolumeCommands)
 
-def makeStereoPanned(fileDict):
-    # Structure of fileDict is:
-    # [0] Filename
-    # [1] Duration
-    # [2] durationList
-    # [3] volumeList
+def fullFFmpegCommand(filename, volumeCommands):
 
+    command = FFMPEG + "/ffmpeg -i " + filename + " -filtercomplex "
+    # Split the audio into the required number of channels
+    command += "[0:a]asplit=" + CHANNELS
+    for channel in range(CHANNELS):
+        channelLabel = "[" + channel + "]"
+        command += channelLabel
+    command +=","
 
+    # Now here come the volume commands, one set of commands per channel
+    # The variable "volumeCommands" has the structure
+    # [ [channel1command1, channel1command2, channel1command3, ... ] [channel2command1, ...] ... ]
 
+    channel = 0
+    for channelCommands in volumeCommands:
+        command += "[" + channel + "]"
+        for channelNode in channelCommands:
+            command += channelNode + ","
+        # No more volume commands: take off the final comma and add an output pad
+        command = command[0:-1] + "[" + channel + "op]" + ";"
+        channel += 1
+    return()
 
-class Birdsong:
-   def __init__(self, filename):
-        self.filename = filename
-        self.duration = clipLength(self.filename)
-        self.durList = makeDurList(self.duration)
-        self.volumeList = makeVolumeList(len(self.durList))
-        # self.pitchList = makePitchList(len(self.durList))
+    # Now the output of the volume commands must be recombined into the correct number of
+    # output channels
+
+    
 
            
 #testfile = Birdsong("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/Hirundo rustica-04.mp3")
@@ -270,5 +334,17 @@ class Birdsong:
 standardiseDirectory("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/")
 pitchShiftDirectory("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED")
 renderList = makeVolumeAndTimeNodeList("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED")
-print("Renderlist is %s" % renderList)
+#print("Renderlist is %s" % renderList)
+#print("Something else")
+
+for render in renderList:
+    #print("Filename: %s" % render['Name'])
+
+    #volumeCommands = makeFFmpegVolumecommands(render)
+    #modulatedFile = modulateFile(render, volumeCommands)
+
+    
+    
+    print(makeFFmpegVolumeCommands(render))
+
 
