@@ -9,6 +9,10 @@ For the interactive community art project and exhibition "Sway" (10th to 23rd Ap
 
 To this end, I have created this program that is a new musical instrument. It efficiently analyses, then processes for pitch, multi-channel pan and dynamics, very large numbers of sounds, with a minimum of human intervention. Finally, the hundreds or thousands of resultant audio files are mixed into a soundscape of almost infinite variety and interest.
 
+The ubiquitous and popular multimedia encoding and processing tool FFmpeg has many functions this musical instrument uses, including an audio mix function. However, the source code normally hard-codes the maximum number of inputs to 32. I have increased this with my own very simple patch to 1024 inputs. Note that this number of inputs slows FFmpeg down considerably when they are in use. On an 8-core 4.6GHz machine fed with audio from a SATA drive running at 6Gbit/s, encoding is barely twice real-time. It is possible that use of an SSD for storing audio would improve this speed enormously.
+
+The necessary patch for FFmpeg is included in this repository.
+
 The program "Chorus" is dedicated to the "SWAY" exhibition, and to all who fall into the effects of injustice as a result of migration. This includes my own family.
 
 Chorus is released under Version 2 of the GNU General Public Licence.
