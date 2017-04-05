@@ -403,7 +403,7 @@ def mixDirectoryFiles(directory, count=999999, renderDuration=3600):
     if count > number:
         count = number
 
-    outputFile = directory + "/" + "MIX-" + str(count) + "-" + str(duration) + "-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=9)) + '.wav'
+    outputFile = directory + "/" + "MIX-" + str(count) + "-" + str(renderDuration) + "-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=9)) + '.wav'
 
     # Create a list of dictionaries.
     # Each dictionary corresponds to a file.
