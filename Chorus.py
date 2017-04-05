@@ -11,6 +11,12 @@ FFMPEG = r"c:/Program Files/ffmpeg/bin/"
 # How many audio channels will the final mix contain?
 CHANNELS = 2
 
+# How long is the shortest piece of audio?
+SHORTEST = 1
+
+# How long is the longest piece of audio?
+LONGEST = 19
+
 # How long is the fade between volume levels (including mute)?
 FADE = 0.5
 
@@ -27,23 +33,34 @@ PROCORIG = "aformat=channel_layouts=mono,highpass=f=200,silenceremove=1:0:-50dB:
 PROCPITCH = "silenceremove=1:0:-50dB:-1:0:-50dB,asetrate=%d,aresample=%d"
 
 # Which codec is to be used for standardized files?
-MONOCODEC = "-vn -acodec libopus"
+MONOCODEC = "-vn -acodec pcm_s16le"
 
 # Which codec is to be used for panned and mixed files including the final output?
-STEREOCODEC = "-vn -acodec libopus -ac 2"
+STEREOCODEC = "-vn -acodec pcm_s16le -ac 2"
+
+COMPRESSEDCODEC = "-vn -acodec pcm_s16le "
+
+# Where shall the temporary files for FFmpeg commands be stored?
+# Put them somewhere visible if you wish to debug them.
+
+TEMPLOCATION="E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED/tmp"
 
 # End of user-definable variables
 #################################
 
 
-import logging, random, math, argparse, subprocess, json, os, concurrent.futures, itertools, pprint, copy
+import logging, random, math, argparse, subprocess, json, os, concurrent.futures, itertools, pprint, copy, tempfile, string
 
 logging.basicConfig(level=logging.DEBUG, format='%(funcName)s - %(levelname)s - %(message)s')
 
-def ffmpegEscape(input):
-    return(input.replate("\\", "\\\\").replace(":", ":\\:"))
+# Make sure our temporary files will work
+os.makedirs(TEMPLOCATION, exist_ok=True)
+tempfile.tempdir=TEMPLOCATION
 
-def makeDurList(time, shortest=1, longest=20):
+def ffmpegEscape(input):
+    return(input.replace("\\", "\\\\").replace(":", "\\:"))
+
+def makeDurList(time, shortest=1, longest=10):
     # logging.debug("Durations totalling %s to be calculated" % time)
 
     durList = list()
@@ -86,7 +103,14 @@ def clipLength(filename):
     dos_command=[FFMPEG+"ffprobe.exe", "-v", "quiet", "-hide_banner", "-print_format", "json", "-show_streams", "-select_streams", "a:0", filename]
     jReturn = json.loads(subprocess.run(dos_command, check=True, stdout=subprocess.PIPE).stdout)
     duration = jReturn['streams'][0]['duration']
-    #logging.debug("Found an audio track of duration %s" % duration)
+    #logging.debug("Found an audio track of duration %s seconds" % duration)
+    return(int(float(duration)))
+
+def clipLengthSamples(filename):
+    dos_command=[FFMPEG+"ffprobe.exe", "-v", "quiet", "-hide_banner", "-print_format", "json", "-show_streams", "-select_streams", "a:0", filename]
+    jReturn = json.loads(subprocess.run(dos_command, check=True, stdout=subprocess.PIPE).stdout)
+    duration = jReturn['streams'][0]['duration_ts']
+    #logging.debug("Found an audio track of duration %s samples" % duration)
     return(int(float(duration)))
 
 def deltaVolFormula(v1, v2, t1, t2):
@@ -102,7 +126,7 @@ def deltaVolFormula(v1, v2, t1, t2):
     # slope between one volume and another, given the volumes
     # required at either end of the slope (v1 and v2), and the time in seconds
     # at each end of the slope (t1 and t2)
-    formula = "if(between(t,%.1f,%.1f),%.0fdB-((%.0fdB-%.0fdB)/(%.1f-%.1f))*(%.1f-t),1):eval=frame" % (t1, t2, v1, v2, v1, t2, t1, t1)
+    formula = "'if(between(t,%.1f,%.1f),%.0fdB-((%.0fdB-%.0fdB)/(%.1f-%.1f))*(%.1f-t),1)':eval=frame" % (t1, t2, v1, v2, v1, t2, t1, t1)
     return(formula)
 
 def standardiseDirectory(pathname, destination="%s/PROCESSED"):
@@ -120,7 +144,7 @@ def standardiseDirectory(pathname, destination="%s/PROCESSED"):
         
         # First, original pitch
         commands.append("\"" + FFMPEG + "ffmpeg\" -y -i \"%s\" " % fullFileName + " -af " + PROCORIG % SAMPLERATE + " " + MONOCODEC \
-                  + " " + METADATA % SAMPLERATE + " \"" + destination + "/" + fileName + ".opus\"")
+                  + " " + METADATA % SAMPLERATE + " \"" + destination + "/" + fileName + ".wav\"")
         
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         for command in commands:
@@ -144,7 +168,7 @@ def pitchShiftDirectory(pathname, variants=8):
             #commands.append("echo HELLO > output")
             commands.append("\"" + FFMPEG + "ffmpeg\" -y -i \"%s\" " % fullFileName \
                             + " -af " + PROCPITCH % (pitch, SAMPLERATE) + " " + MONOCODEC \
-                            + " " + METADATA % pitch + " \"" + pathname + "/" + os.path.splitext(fileName)[0] + "-%d" % pitch + ".opus\"")
+                            + " " + METADATA % pitch + " \"" + pathname + "/" + os.path.splitext(fileName)[0] + "-%d" % pitch + ".wav\"")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         for command in commands:
@@ -294,13 +318,20 @@ def makeFFmpegVolumeCommands(fileDict):
 
 def fullFFmpegCommand(filename, volumeCommands):
 
-    command = FFMPEG + "/ffmpeg -i " + filename + " -filtercomplex "
+    # Two things go on here. We create a filter whose commands get put into a file with a
+    # suitable temporary file name. Then we create an FFmpeg command to process the file
+    # whilst reading its filter commands from the temporary file we just created. This is to
+    # work around the limitation of DOS commands having a maximum of just 8191 characters.
+
+    command = "\"" + FFMPEG + "/ffmpeg\" -i \"" + filename + "\" -filter_complex_script \""
+
+    script = ''
     # Split the audio into the required number of channels
-    command += "[0:a]asplit=" + CHANNELS
+    script += "[0:a]aformat=sample_fmts=flt,asplit=" + str(CHANNELS)
     for channel in range(CHANNELS):
-        channelLabel = "[" + channel + "]"
-        command += channelLabel
-    command +=","
+        channelLabel = "[" + str(channel) + "]"
+        script += channelLabel
+    script +=";"
 
     # Now here come the volume commands, one set of commands per channel
     # The variable "volumeCommands" has the structure
@@ -308,19 +339,125 @@ def fullFFmpegCommand(filename, volumeCommands):
 
     channel = 0
     for channelCommands in volumeCommands:
-        command += "[" + channel + "]"
+        script += "[" + str(channel) + "]"
         for channelNode in channelCommands:
-            command += channelNode + ","
-        # No more volume commands: take off the final comma and add an output pad
-        command = command[0:-1] + "[" + channel + "op]" + ";"
+            script += "volume=" + channelNode + ","
+        # No more volume commands: take off the final comma and add an output format and pad
+        # For some reason, the pcm_s16le codec doesn't read the output channels format of the
+        # 'volume' filter correctly without this help.
+        script = script[0:-1] + ",aformat=channel_layouts=mono" + "[" + str(channel) + "op]" + ";"
         channel += 1
-    return()
 
     # Now the output of the volume commands must be recombined into the correct number of
     # output channels
 
+    for channel in range(CHANNELS):
+        script += "[" + str(channel) + "op" + "]"
+
+    script += "amerge=inputs=" + str(CHANNELS) + "[out0]"
+
+    # Now write the script to a temporary file
+    tempHandle = tempfile.NamedTemporaryFile(delete=False)
+    name = tempHandle.name
+    logging.debug("Temp file is: %s" % name)
+    tempHandle.write(script.encode('utf-8'))
+    tempHandle.close()
+
+    command += name + "\" -map \"[out0]\" "
+
+    # That's the filter done. Now to encode the audio.
+    outputFile = os.path.dirname(filename) + "/VOLUMEPROCESSED/" + os.path.basename(filename)
+    command += COMPRESSEDCODEC + "\"%s\"" % outputFile
+
+    # parameters = {"Command": command, "Filter" : name}
+    logging.debug("FFmpeg command is: %s" % command)
+    return(command)   
+
+def repitchRenderList(renderList):
+    commandsToRunList = list()
+    for render in renderList:
+        commandList = makeFFmpegVolumeCommands(render)
+        logging.debug("Processing %s" % render['Name'])
+        commandsToRunList.append(fullFFmpegCommand(render['Name'], commandList))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        for command in commandsToRunList:
+            try:
+                future = executor.submit(subprocess.run, command)
+            except Exception:
+                # logging.debug("This should never be reached")
+                pass
+        
+    return()
+
+def mixDirectoryFiles(directory, count=999999, renderDuration=3600):
+    # Mixes all the audio files in a single cirectory into one file
+    # Count determines how many files get mixed,
+    # Duration is the duration of the output mix
+    
+    # Start with a list of all the audio files we're interested in
+    fileList = filterAudioFiles(os.listdir(directory))
+
+    # Never request more files to mix than there are files available
+    number = len(fileList)
+    if count > number:
+        count = number
+
+    outputFile = directory + "/" + "MIX-" + str(count) + "-" + str(duration) + "-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=9)) + '.wav'
+
+    # Create a list of dictionaries.
+    # Each dictionary corresponds to a file.
+    # The dictionary has keys: Name, Duration, LoopPoint
+    logging.debug("We have %d files." % count)
+    fileDictionaryList = list()
+    # Only mix as many files as we're instructed to
+    for item in random.sample(fileList, count):
+        fileDictionary = dict()
+        fileDictionary['Name'] = item
+        duration = clipLength(directory + "/" + item)
+        fileDictionary['Duration'] = duration
+        loopPoint = random.randint(0, duration-1)
+        fileDictionary['LoopPoint'] = loopPoint
+        fileDictionaryList.append(fileDictionary)
+
+    # Start to build FFmpeg command
+    
+    command = '"' + FFMPEG + 'ffmpeg" -f lavfi -i "anullsrc" -filter_complex_script "'
+
+    script = ''
+
+    # Write the filter for all the input files
+    for i, fileDictionary in enumerate(fileDictionaryList):
+        script += "amovie='" + ffmpegEscape(directory + "/" + fileDictionary['Name']) + "'"
+        script += ":loop=0:seek_point=" + str(fileDictionary['LoopPoint'])
+        script += "[" + str(i) + "];"
+
+    # Now merge the input files together
+    for i, fileDictionary in enumerate(fileDictionaryList):
+        script += "[" + str(i) + "]"
+    # The end of the command resets the timestamps because we are looping over
+    # incoming audio and, therefore, losing the original timestamps which
+    # harms FFmpeg's ability to time its own output.
+    script += "amix=inputs=" + str(i+1) + ",asetpts=N/SR/TB[out0]"
+
+    # Now write the script to a temporary file
+    tempHandle = tempfile.NamedTemporaryFile(delete=False)
+    name = tempHandle.name
+    logging.debug("Temp file is: %s" % name)
+    tempHandle.write(script.encode('utf-8'))
+    tempHandle.close()
+
+    command += name + '" -map "[out0]" -ac ' + str(CHANNELS) + ' -t ' + str(renderDuration) + ' -acodec pcm_s16le "' + outputFile + '"'
+
+    print(command)
+    subprocess.run(command)
+    return()
+    
     
 
+    
+
+# TESTING OR YOUR MAIN COMMANDS BEGIN HERE
            
 #testfile = Birdsong("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/Hirundo rustica-04.mp3")
 
@@ -337,14 +474,8 @@ renderList = makeVolumeAndTimeNodeList("E:/Users/john/Documents/REAPER Media/CRO
 #print("Renderlist is %s" % renderList)
 #print("Something else")
 
-for render in renderList:
-    #print("Filename: %s" % render['Name'])
+result = repitchRenderList(renderList)
 
-    #volumeCommands = makeFFmpegVolumecommands(render)
-    #modulatedFile = modulateFile(render, volumeCommands)
-
-    
-    
-    print(makeFFmpegVolumeCommands(render))
-
+result = mixDirectoryFiles("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED/VOLUMEPROCESSED")
+pprint.pprint(result)
 
