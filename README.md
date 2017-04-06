@@ -9,7 +9,7 @@ For the interactive community art project and exhibition "Sway" (10th to 23rd Ap
 
 To this end, I have created this program that is a new musical instrument. It efficiently analyses, then processes for pitch, multi-channel pan and dynamics, very large numbers of sounds, with a minimum of human intervention. Finally, the hundreds or thousands of resultant audio files are mixed into a soundscape of almost infinite variety and interest.
 
-The ubiquitous and popular multimedia encoding and processing tool FFmpeg has many functions this musical instrument uses, including an audio mix function. However, the source code normally hard-codes the maximum number of inputs to 32. I have increased this with my own very simple patch to 1024 inputs. Note that this number of inputs slows FFmpeg down considerably when they are in use. On an 8-core 4.6GHz machine fed with audio from a SATA drive running at 6Gbit/s, encoding is barely twice real-time. It is possible that use of an SSD for storing audio would improve this speed enormously.
+The ubiquitous and popular multimedia encoding and processing tool FFmpeg has many functions this musical instrument uses, including an audio mix function. However, the source code normally hard-codes the maximum number of inputs to 32. I have increased this with my own very simple patch to 1024 inputs. Note that this number of inputs slows FFmpeg down considerably when they are in use, and it is probably not in the spirit of FFmpeg, which aims (among many other things) to be fast. On an 8-core 4.6GHz machine fed with audio from a SATA drive running at 6Gbit/s, encoding is barely twice real-time. It is possible that use of an SSD for storing audio would improve this speed enormously.
 
 The necessary patch for FFmpeg is included in this repository.
 
@@ -17,6 +17,6 @@ The program "Chorus" is dedicated to the "SWAY" exhibition, and to all who fall 
 
 Chorus is released under Version 2 of the GNU General Public Licence.
 
-You need Python 3.6 and recent FFmpeg to use this. And lots of recorded sounds. And a fast-multiprocessor computer unless you don't mind starting a process, going for a long walk, and coming back.
+You need Python 3.6 and a patched FFmpeg to use this. And lots of recorded sounds. And a fast-multiprocessor computer unless you don't mind starting a process, going for a very long walk, and coming back.
 
 Version 0.9. It works.
