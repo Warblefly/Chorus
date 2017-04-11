@@ -456,19 +456,81 @@ def mixDirectoryFiles(directory, count=999999, renderDuration=3600):
     print(command)
     subprocess.run(command)
     return()
-    
-    
 
+def interweaveFilesCommand(file1, file2, sliceDuration=20, crossfade=8):
+    # Produces an FFmpeg command that interweaves two files using the 'acrossfade' effect
+    # Both files must be approximately the same length.
+    # Behaviour under other circumstances is presently undefined.
     
+    length1 = clipLength(file1) / 2
+    length2 = clipLength(file2) / 2
+    FFmpegCommand = '"' + FFMPEG + '/' + 'ffmpeg" '
+    startTime = 0
+    inputIndex = 0
+    
+    while (startTime <= length1) and (startTime <= length2):
+        FFmpegCommand += '-ss ' + str(startTime) + ' -t ' + str(sliceDuration) + ' '
+        FFmpegCommand += '-i "' + file1 + '" '
+        FFmpegCommand += '-ss ' + str(startTime) + ' -t ' + str(sliceDuration) + ' '
+        FFmpegCommand += '-i "' + file2 + '" '
+        startTime += sliceDuration
+        # Number of files entered so far
+        inputIndex += 2
+
+    FFmpegCommand += '-filter_complex "'
+    # In the command line, outputIndex will be prefixed with 'op' so that
+    # it is distinct from any input indices
+    #outputIndex = 0
+    #for i in range(0, inputIndex):
+    #    FFmpegCommand += '[' + str(i) + ']asetpts=N/SR/TB[' + 'c' + str(i) + '];'
+    
+    outputIndex = 0
+    for i in range(0, inputIndex, 2):
+        FFmpegCommand += '[' + str(i) + ']' + '[' + str(i+1) + ']'
+        FFmpegCommand += 'acrossfade=d=' + str(crossfade) 
+        FFmpegCommand += '[' + 'op' + str(outputIndex) + ']' + ';'
+        outputIndex += 1
+
+    for op in range(0, outputIndex):
+        FFmpegCommand += '[' + 'op' + str(op) + ']'
+        
+    FFmpegCommand += 'concat=n=' + str(op+1) + ':v=0:a=1"'
+
+    return(FFmpegCommand)
+
+
+
 
 # TESTING OR YOUR MAIN COMMANDS BEGIN HERE
-   
-standardiseDirectory("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/")
-pitchShiftDirectory("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED")
-renderList = makeVolumeAndTimeNodeList("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED")
 
-result = repitchRenderList(renderList)
+# This command creates mono files out of all files in the directory given
+# at a standard volume level.
+#standardiseDirectory("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/")
 
-result = mixDirectoryFiles("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED/VOLUMEPROCESSED")
+# This command creates repitched versions of all files in a particular directory
+# creating eight (default, can be changed in the call) variants
+#pitchShiftDirectory("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED")
+
+# This returns a list of lists, consisting of multi-channel volume control points
+# for each file discovered. These lists can be used to control FFmpeg in the next step
+#renderList = makeVolumeAndTimeNodeList("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED")
+
+# This command takes the list of lists consisting of multi-channel volume control points,
+# and then executes FFmpeg with those parameters to create multi-channel files of each sound,
+# ready for playback on multi-channel systems, or for further mixing.
+#result = repitchRenderList(renderList)
+
+# This example command remixes random selections from sets of files in the given directory,
+# between a low and high number. The example you see mixes betweeen 161 and 559 files into
+# multi-channel files for playback.
+for mixNumber in range(161, 559):
+    result = mixDirectoryFiles("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED/VOLUMEPROCESSED", count=mixNumber)
 pprint.pprint(result)
+
+# This command, in development, interweaves two files. It is not yet finished.
+#print(interweaveFilesCommand("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED/VOLUMEPROCESSED/MIX-64-3600-H3YSXY6XN.wav", \
+                            #"E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED/VOLUMEPROCESSED/MIX-4-3600-CW6UGJWVW.wav"))
+
+
+
 
