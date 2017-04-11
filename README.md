@@ -7,9 +7,9 @@ For the interactive community art project and exhibition "Sway" (10th to 23rd Ap
 2. Songs of many cultures, sent to the world for teaching purposes by the British Council World Voice project
 3. The contribution of gallery visitors who add new elements to a sculpture: each new element brings an addition to the soundtrack.
 
-To this end, I have created this program (really, a set of functions that the player strings together programmatically) that is a new musical instrument. It efficiently analyses, then processes for pitch, multi-channel pan and dynamics, very large numbers of sounds, with a minimum of human intervention. Finally, the hundreds or thousands of resultant audio files are mixed into a soundscape of almost infinite variety and interest.
+To this end, I have created this program (really, a library of functions that the player strings together programmatically) that is a new musical instrument. It efficiently analyses, then processes for pitch, multi-channel pan and dynamics, very large numbers of sounds, with a minimum of human intervention. Finally, the hundreds or thousands of resultant audio files are mixed into a soundscape of almost infinite variety and interest.
 
-At the heart of Chorus's processing is the ubiquitous and popular multimedia encoding and processing tool FFmpeg. Many of its funtions are used here, including an audio mix function. The very latest versions of FFmpeg allow up to 1024 audio tracks to be combined using the filter 'amix'. Earlier versions allowed only 32 (for sensible reasons) but the developers have accepted by patch allowing the larger number of inputs. On an 8-core 4.6GHz machine fed with audio from a SATA drive running at 6Gbit/s, encoding is barely twice real-time. It is possible that use of an SSD for storing audio would improve this speed enormously.
+At the heart of Chorus's processing is the ubiquitous and popular multimedia encoding and processing tool FFmpeg. Many of its funtions are used here, including an audio mix function. The very latest versions of FFmpeg allow up to 1024 audio tracks to be combined using the filter 'amix'. Earlier versions allowed only 32 (for sensible reasons) but the developers have accepted my patch allowing the larger number of inputs. On an 8-core 4.6GHz machine fed with audio from a SATA drive running at 6Gbit/s, mixing and uncompressed writing of 500 input files simultaneously progresses at about three to five times faster than real-time. It is possible that use of an SSD for storing audio would improve this speed enormously.
 
 My patch for FFmpeg is included in this repository, but in the very near future, binary distributions of FFmpeg will include this patch if they do not do so already.
 
@@ -17,6 +17,6 @@ The program "Chorus" is dedicated to the "SWAY" exhibition, and to all who fall 
 
 Chorus is released under Version 2 of the GNU General Public Licence.
 
-You need Python 3.6 and a patched FFmpeg to use this. And lots of recorded sounds. And a fast-multiprocessor computer unless you don't mind starting a process, going for a very long walk, and coming back.
+You need Python 3.6 and a patched (or very new binary of) FFmpeg to use this: it must have the 1024-inputs to amix facility. And you'll want lots of recorded sounds. And a fast-multiprocessor computer unless you don't mind starting a process, going for a very long walk, and coming back.
 
 Version 0.93. It works.
