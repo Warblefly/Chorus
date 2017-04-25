@@ -33,12 +33,15 @@ PROCORIG = "aformat=channel_layouts=mono,highpass=f=200,silenceremove=1:0:-50dB:
 PROCPITCH = "silenceremove=1:0:-50dB:-1:0:-50dB,asetrate=%d,aresample=%d"
 
 # Which codec is to be used for standardized files?
-MONOCODEC = "-vn -acodec pcm_s16le"
+MONOCODEC = " -vn -acodec pcm_s16le "
 
-# Which codec is to be used for panned and mixed files including the final output?
-STEREOCODEC = "-vn -acodec pcm_s16le -ac 2"
+# Which codec is to be used for panned and mixed files?
+STEREOCODEC = " -vn -acodec pcm_s16le -ac 2 "
 
-COMPRESSEDCODEC = "-vn -acodec pcm_s16le "
+COMPRESSEDCODEC = " -vn -acodec pcm_s16le "
+
+# Which codec is to be used for the final output files?
+OUTPUTCODEC = " -vn -acodec libopus -vbr on -b:a 44k "
 
 # Where shall the temporary files for FFmpeg commands be stored?
 # Put them somewhere visible if you wish to debug them.
@@ -60,7 +63,7 @@ tempfile.tempdir=TEMPLOCATION
 def ffmpegEscape(input):
     return(input.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'"))
 
-def makeDurList(time, shortest=1, longest=10):
+def makeDurList(time, shortest=2, longest=10):
     # logging.debug("Durations totalling %s to be calculated" % time)
 
     durList = list()
@@ -172,7 +175,7 @@ def pitchShiftDirectory(pathname, variants=8):
             #commands.append("echo HELLO > output")
             commands.append("\"" + FFMPEG + "ffmpeg\" -y -i \"%s\" " % fullFileName \
                             + " -af " + PROCPITCH % (pitch, SAMPLERATE) + " " + MONOCODEC \
-                            + " -t 07:00 " + METADATA % pitch + " \"" + pathname + "/" + os.path.splitext(fileName)[0] + "-%d" % pitch + ".wav\"")
+                            + " -t 14:00 " + METADATA % pitch + " \"" + pathname + "/" + os.path.splitext(fileName)[0] + "-%d" % pitch + ".wav\"")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         for command in commands:
@@ -394,6 +397,28 @@ def repitchRenderList(renderList):
         
     return()
 
+def multipleConvert(directory, bitrate=48):
+    # Using parallel processes, encodes many files in one directory
+    # quickly, for distribution
+    fileList = filterAudioFiles(os.listdir(directory))
+    commandList = list()
+    for file in fileList:
+        command = '"' + FFMPEG + '/ffmpeg" -i "' + directory + '/' + file + '" '
+        command += " -af volume=-20dB,bass=f=400:g=-5,treble=f=200:g=15,treble=f=1800:g=10,dynaudnorm,bs2b "
+        command += OUTPUTCODEC + ' "' + directory + '/' + file + '.opus"'
+        commandList.append(command)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        for command in commandList:
+            try:
+                future = executor.submit(subprocess.run, command)
+            except Exception:
+                pass
+            
+    return()
+
+            
+
 def mixDirectoryFiles(directory, count=999999, renderDuration=3600):
     # Mixes all the audio files in a single cirectory into one file
     # Count determines how many files get mixed,
@@ -442,7 +467,7 @@ def mixDirectoryFiles(directory, count=999999, renderDuration=3600):
     # The end of the command resets the timestamps because we are looping over
     # incoming audio and, therefore, losing the original timestamps which
     # harms FFmpeg's ability to time its own output.
-    script += "amix=inputs=" + str(i+1) + ",asetpts=N/SR/TB,dynaudnorm,bs2b[out0]"
+    script += "amix=inputs=" + str(i+1) + ",asetpts=N/SR/TB,volume=-20dB,bass=f=400:g=-5,treble=f=200:g=15,treble=f=1800:g=10,dynaudnorm,bs2b[out0]"
 
     # Now write the script to a temporary file
     tempHandle = tempfile.NamedTemporaryFile(delete=False)
@@ -509,7 +534,7 @@ def interweaveFilesCommand(file1, file2, sliceDuration=20, crossfade=8):
 
 # This command creates repitched versions of all files in a particular directory
 # creating eight (default, can be changed in the call) variants
-#pitchShiftDirectory("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED")
+#pitchShiftDirectory("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED", variants=16)
 
 # This returns a list of lists, consisting of multi-channel volume control points
 # for each file discovered. These lists can be used to control FFmpeg in the next step
@@ -523,14 +548,17 @@ def interweaveFilesCommand(file1, file2, sliceDuration=20, crossfade=8):
 # This example command remixes random selections from sets of files in the given directory,
 # between a low and high number. The example you see mixes betweeen 161 and 559 files into
 # multi-channel files for playback.
-for mixNumber in range(161, 559):
-    result = mixDirectoryFiles("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED/VOLUMEPROCESSED", count=mixNumber)
-pprint.pprint(result)
+#for mixNumber in range(36, 80):
+#    result = mixDirectoryFiles("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED/VOLUMEPROCESSED", count=mixNumber)
+#pprint.pprint(result)
 
 # This command, in development, interweaves two files. It is not yet finished.
 #print(interweaveFilesCommand("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED/VOLUMEPROCESSED/MIX-64-3600-H3YSXY6XN.wav", \
                             #"E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED/VOLUMEPROCESSED/MIX-4-3600-CW6UGJWVW.wav"))
 
+
+# This command, using parallel processes, converts uncompressed files ready for compressed distribtion
+result = multipleConvert("E:/Users/john/Documents/REAPER Media/CROSSINGS/SOURCES/PROCESSED/VOLUMEPROCESSED/mixed/recursive/")
 
 
 
